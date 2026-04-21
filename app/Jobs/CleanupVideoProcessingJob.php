@@ -70,7 +70,7 @@ class CleanupVideoProcessingJob implements ShouldQueue
     {
         $this->video->refresh();
 
-        // Check original language subtitle
+        // Check original language subtitle (always required)
         $originalSubtitle = Subtitle::where('video_id', $videoId)
             ->where('chunk_index', -1)
             ->where('type', 'original')
@@ -89,28 +89,6 @@ class CleanupVideoProcessingJob implements ShouldQueue
             'path' => $originalSubtitle->path,
             'size' => Storage::disk('minio')->size($originalSubtitle->path),
         ]);
-
-        // Check translated subtitle if target language is not English
-        if ($this->video->target_language !== 'en') {
-            $translatedSubtitle = Subtitle::where('video_id', $videoId)
-                ->where('chunk_index', -1)
-                ->where('type', 'translated')
-                ->first();
-
-            if (!$translatedSubtitle || !$translatedSubtitle->path) {
-                throw new \RuntimeException("Translated subtitle not found for video_id={$videoId}");
-            }
-
-            if (!Storage::disk('minio')->exists($translatedSubtitle->path)) {
-                throw new \RuntimeException("Translated subtitle file missing in MinIO: {$translatedSubtitle->path}");
-            }
-
-            Log::info("CleanupVideoProcessingJob: Verified translated subtitle", [
-                'video_id' => $videoId,
-                'path' => $translatedSubtitle->path,
-                'size' => Storage::disk('minio')->size($translatedSubtitle->path),
-            ]);
-        }
     }
 
     /**

@@ -64,26 +64,46 @@ class TranscribeChunkJob implements ShouldQueue
 
             // Get the target language from the parent Video record.
             $video = $this->audioChunk->video;
+            $targetLanguage = $video->target_language ?? 'en';
 
-            // Always transcribe in English (the source language)
-            // Translation to target language happens later in MergeSubtitleJob
-            $transcribeLanguage = 'en';
+            // OPTIMIZATION: Direct English transcription
+            // - If target = EN: use Whisper translate mode (auto-detect & translate to EN)
+            // - If target = ID: transcribe in Indonesian
+            if ($targetLanguage === 'en') {
+                // Use Whisper translate mode: auto-detect language and translate to English
+                $transcribeLanguage = null; // Will use auto-detection via omitting language param
+                $useTranslate = true;
+            } else {
+                // For Indonesian target: transcribe in Indonesian language
+                $transcribeLanguage = 'id'; // Explicitly set to Indonesian
+                $useTranslate = false;
+            }
+
+            Log::info('TranscribeChunkJob: transcription mode', [
+                'audio_chunk_id' => $this->audioChunk->id,
+                'target_language' => $targetLanguage,
+                'use_translate_mode' => $useTranslate,
+            ]);
 
             // Call Whisper API to transcribe this chunk.
             $whisperService = new WhisperService();
-            $segments = $whisperService->transcribe($this->audioChunk->path, $transcribeLanguage);
+            $segments = $whisperService->transcribe($this->audioChunk->path, $transcribeLanguage, $useTranslate);
 
             Log::info('TranscribeChunkJob: transcription received', [
                 'audio_chunk_id' => $this->audioChunk->id,
                 'segment_count'  => count($segments),
             ]);
 
-            // Store raw transcript in Subtitle record.
+            // Store raw transcript
+            // - If useTranslate: already in English (from Whisper translate mode)
+            // - If !useTranslate: in original language (Indonesian), will be translated later
+            $subtitleLanguage = $useTranslate ? 'en' : 'id';
+            
             $subtitle = Subtitle::updateOrCreate(
                 [
                     'video_id'   => $this->audioChunk->video_id,
                     'chunk_index' => $this->audioChunk->chunk_index,
-                    'language'   => 'en',  // Always store transcriptions in English
+                    'language'   => $subtitleLanguage,
                     'type'       => 'original',
                 ],
                 [
@@ -95,6 +115,7 @@ class TranscribeChunkJob implements ShouldQueue
             Log::info('TranscribeChunkJob: subtitle record created', [
                 'subtitle_id'    => $subtitle->id,
                 'audio_chunk_id' => $this->audioChunk->id,
+                'language'       => $subtitleLanguage,
             ]);
 
             // Mark the audio chunk as transcribed.

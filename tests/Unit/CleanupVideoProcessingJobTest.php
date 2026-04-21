@@ -100,40 +100,27 @@ class CleanupVideoProcessingJobTest extends TestCase
             'minio_path' => 'videos/test/original.mp4',
         ]);
 
-        // Create original subtitle
-        Subtitle::create([
-            'video_id' => $video->id,
-            'chunk_index' => -1,
-            'language' => 'en',
-            'raw_transcript' => [['index' => 1, 'start' => 0, 'end' => 2, 'text' => 'Hello']],
-            'path' => null,
-            'type' => 'original',
-            'status' => 'transcribed',
-        ]);
-
-        // Create translated subtitle
+        // When target is 'id', we transcribe directly in Indonesian
+        // The original subtitle is in 'id' language, not 'en'
         Subtitle::create([
             'video_id' => $video->id,
             'chunk_index' => -1,
             'language' => 'id',
             'raw_transcript' => [['index' => 1, 'start' => 0, 'end' => 2, 'text' => 'Halo']],
             'path' => null,
-            'type' => 'translated',
+            'type' => 'original',
             'status' => 'transcribed',
         ]);
 
-        // Store SRT files
-        $originalPath = 'videos/' . $video->id . '/subtitles/en.srt';
-        $translatedPath = 'videos/' . $video->id . '/subtitles/id_translated.srt';
-        Storage::disk('minio')->put($originalPath, "1\n00:00:00,000 --> 00:00:02,000\nHello\n");
-        Storage::disk('minio')->put($translatedPath, "1\n00:00:00,000 --> 00:00:02,000\nHalo\n");
+        // Store SRT file
+        $originalPath = 'videos/' . $video->id . '/subtitles/id.srt';
+        Storage::disk('minio')->put($originalPath, "1\n00:00:00,000 --> 00:00:02,000\nHalo\n");
 
-        // Update subtitle paths
+        // Update subtitle path
         Subtitle::where('video_id', $video->id)->where('type', 'original')->update(['path' => $originalPath]);
-        Subtitle::where('video_id', $video->id)->where('type', 'translated')->update(['path' => $translatedPath]);
 
         $job = new CleanupVideoProcessingJob($video);
-        $job->handle();  // Should verify both subtitles
+        $job->handle();  // Should verify original subtitle exists
 
         $this->assertTrue(true);
     }
@@ -152,28 +139,27 @@ class CleanupVideoProcessingJobTest extends TestCase
             'minio_path' => 'videos/test/original.mp4',
         ]);
 
-        // Create original subtitle with file
+        // When target is 'id', we transcribe directly in Indonesian
+        // So the original subtitle IS in 'id' language, not 'en'
+        // No translated subtitle is created
         Subtitle::create([
             'video_id' => $video->id,
             'chunk_index' => -1,
-            'language' => 'en',
-            'raw_transcript' => [['index' => 1, 'start' => 0, 'end' => 2, 'text' => 'Hello']],
-            'path' => 'videos/' . $video->id . '/subtitles/en.srt',
+            'language' => 'id',
+            'raw_transcript' => [['index' => 1, 'start' => 0, 'end' => 2, 'text' => 'Halo']],
+            'path' => 'videos/' . $video->id . '/subtitles/id.srt',
             'type' => 'original',
             'status' => 'transcribed',
         ]);
 
         // Store original file
-        Storage::disk('minio')->put('videos/' . $video->id . '/subtitles/en.srt', "1\n00:00:00,000 --> 00:00:02,000\nHello\n");
+        Storage::disk('minio')->put('videos/' . $video->id . '/subtitles/id.srt', "1\n00:00:00,000 --> 00:00:02,000\nHalo\n");
 
-        // Don't create translated subtitle
-
+        // Job should succeed - we only verify the original subtitle exists
         $job = new CleanupVideoProcessingJob($video);
-
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Translated subtitle not found');
-
         $job->handle();
+
+        $this->assertTrue(true);
     }
 
     public function test_skips_translated_verification_if_target_is_english()

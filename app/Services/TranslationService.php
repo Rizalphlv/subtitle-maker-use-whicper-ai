@@ -31,7 +31,9 @@ class TranslationService
     /**
      * Translate merged subtitle to target language using OpenAI API.
      * 
-     * Translates each segment individually to preserve segmentation.
+     * OPTIMIZATION: Uses batch translation (single API request for all segments)
+     * instead of per-segment translation to reduce API calls and cost.
+     * 
      * Keeps timestamps unchanged, only translates text.
      * 
      * @param int $videoId Video ID
@@ -51,20 +53,20 @@ class TranslationService
 
         // If source and target are the same, skip translation
         if ($sourceLanguage === $targetLanguage) {
-            // \Log::info('TranslationService: source and target languages match, skipping', [
-            //     'video_id' => $videoId,
-            //     'language' => $sourceLanguage,
-            // ]);
+            Log::info('TranslationService: source and target languages match, skipping', [
+                'video_id' => $videoId,
+                'language' => $sourceLanguage,
+            ]);
             return null;
         }
 
         $video = Video::findOrFail($videoId);
 
-        // \Log::info('TranslationService: starting translation', [
-        //     'video_id' => $videoId,
-        //     'source_language' => $sourceLanguage,
-        //     'target_language' => $targetLanguage,
-        // ]);
+        Log::info('TranslationService: starting BATCH translation', [
+            'video_id' => $videoId,
+            'source_language' => $sourceLanguage,
+            'target_language' => $targetLanguage,
+        ]);
 
         // Get merged subtitle (chunk_index = -1)
         $mergedSubtitle = Subtitle::where('video_id', $videoId)
@@ -81,35 +83,20 @@ class TranslationService
         }
 
         // ─────────────────────────────────────────────────────────────────────────
-        // Translate each segment individually (preserve segmentation)
+        // BATCH TRANSLATE all segments in single API request
         // ─────────────────────────────────────────────────────────────────────────
-        $translatedSegments = [];
-        foreach ($segments as $segment) {
-            $text = $segment['text'];
-            
-            // Skip translation for empty or placeholder text to save API resources
-            if ($this->shouldSkipTranslation($text)) {
-                // \Log::debug('TranslationService: skipping translation for empty/placeholder text', [
-                //     'text' => $text,
-                //     'source_language' => $sourceLanguage,
-                //     'target_language' => $targetLanguage,
-                // ]);
-                $translatedText = $text;
-            } else {
-                $translatedText = $this->translateSegment(
-                    $text,
-                    $sourceLanguage,
-                    $targetLanguage
-                );
-            }
+        Log::info('TranslationService: preparing batch translation', [
+            'video_id' => $videoId,
+            'segment_count' => count($segments),
+            'from' => $sourceLanguage,
+            'to' => $targetLanguage,
+        ]);
 
-            $translatedSegments[] = [
-                'index' => $segment['index'],
-                'start' => $segment['start'],
-                'end' => $segment['end'],
-                'text' => $translatedText,
-            ];
-        }
+        $translatedSegments = $this->batchTranslateSegments(
+            $segments,
+            $sourceLanguage,
+            $targetLanguage
+        );
 
         // ─────────────────────────────────────────────────────────────────────────
         // Store translated subtitle record
@@ -127,13 +114,13 @@ class TranslationService
             ]
         );
 
-        // \Log::info('TranslationService: translation complete', [
-        //     'video_id' => $videoId,
-        //     'subtitle_id' => $translatedSubtitle->id,
-        //     'source_language' => $sourceLanguage,
-        //     'target_language' => $targetLanguage,
-        //     'segment_count' => count($translatedSegments),
-        // ]);
+        Log::info('TranslationService: batch translation complete', [
+            'video_id' => $videoId,
+            'subtitle_id' => $translatedSubtitle->id,
+            'source_language' => $sourceLanguage,
+            'target_language' => $targetLanguage,
+            'segment_count' => count($translatedSegments),
+        ]);
 
         return $translatedSubtitle;
     }
@@ -147,84 +134,6 @@ class TranslationService
      * @return string Translated text
      * @throws RuntimeException If translation fails
      */
-    protected function translateSegment(
-        string $text,
-        string $sourceLanguage,
-        string $targetLanguage
-    ): string {
-        $apiKey = config('services.openai.api_key');
-        if (!$apiKey) {
-            throw new RuntimeException(
-                'OpenAI API key not configured. Set OPENAI_API_KEY in .env'
-            );
-        }
-
-        $endpoint = config('services.openai.endpoint');
-        $sourceLangName = self::LANGUAGE_NAMES[$sourceLanguage] ?? $sourceLanguage;
-        $targetLangName = self::LANGUAGE_NAMES[$targetLanguage] ?? $targetLanguage;
-
-        $prompt = "Translate the following subtitle text from {$sourceLangName} to {$targetLangName}. " .
-                  "Provide ONLY the translation, with no explanations or additional text.\n\n" .
-                  "Text: {$text}";
-
-        try {
-            $response = Http::withHeaders([
-                'Authorization' => "Bearer {$apiKey}",
-                'Content-Type' => 'application/json',
-            ])->post("{$endpoint}/chat/completions", [
-                'model' => 'gpt-4o-mini',
-                'messages' => [
-                    [
-                        'role' => 'system',
-                        'content' => 'You are a professional subtitle translator. Translate subtitles accurately while preserving the original meaning and tone.',
-                    ],
-                    [
-                        'role' => 'user',
-                        'content' => $prompt,
-                    ],
-                ],
-                'temperature' => 0.3,  // Lower temperature for consistency
-                'max_tokens' => 256,
-            ]);
-
-            if (!$response->successful()) {
-                $error = $response->json('error.message') ?? $response->body();
-                throw new RuntimeException(
-                    "OpenAI API error ({$response->status()}): {$error}"
-                );
-            }
-
-            $data = $response->json();
-
-            // Extract translated text from response
-            if (!isset($data['choices'][0]['message']['content'])) {
-                throw new RuntimeException('Invalid OpenAI API response format');
-            }
-
-            $translatedText = trim($data['choices'][0]['message']['content']);
-
-            // \Log::debug('TranslationService: segment translated', [
-            //     'source' => $text,
-            //     'target' => $translatedText,
-            //     'source_language' => $sourceLanguage,
-            //     'target_language' => $targetLanguage,
-            // ]);
-
-            return $translatedText;
-        } catch (\Exception $e) {
-            Log::error('TranslationService: segment translation failed', [
-                'text' => substr($text, 0, 100),
-                'source_language' => $sourceLanguage,
-                'target_language' => $targetLanguage,
-                'error' => $e->getMessage(),
-            ]);
-
-            throw new RuntimeException(
-                "Failed to translate segment: {$e->getMessage()}"
-            );
-        }
-    }
-
     /**
      * Normalize language code.
      * 
@@ -249,6 +158,154 @@ class TranslationService
         $source = $this->normalizeLanguage($sourceLanguage);
         $target = $this->normalizeLanguage($targetLanguage);
         return $source !== $target;
+    }
+
+    /**
+     * Batch translate multiple segments in a single API request.
+     * 
+     * OPTIMIZATION: Combines all segments into one request to reduce API calls.
+     * Format segments as numbered list, send to OpenAI, parse response.
+     * 
+     * @param array $segments Segments to translate
+     * @param string $sourceLanguage Source language
+     * @param string $targetLanguage Target language
+     * @return array Translated segments with preserved timing and structure
+     */
+    protected function batchTranslateSegments(
+        array $segments,
+        string $sourceLanguage,
+        string $targetLanguage
+    ): array {
+        // Build numbered list of texts to translate
+        $textsToTranslate = [];
+        foreach ($segments as $index => $segment) {
+            $text = trim($segment['text']);
+            
+            // Skip empty/placeholder segments
+            if ($this->shouldSkipTranslation($text)) {
+                $textsToTranslate[$index] = $text; // Keep original
+            } else {
+                $textsToTranslate[$index] = $text;
+            }
+        }
+
+        // Create prompt with all texts
+        $sourceLangName = self::LANGUAGE_NAMES[$sourceLanguage] ?? $sourceLanguage;
+        $targetLangName = self::LANGUAGE_NAMES[$targetLanguage] ?? $targetLanguage;
+
+        $prompt = "You are a professional subtitle translator. Translate the following numbered subtitle lines from {$sourceLangName} to {$targetLangName}.\n\n";
+        $prompt .= "IMPORTANT RULES:\n";
+        $prompt .= "1. Keep the numbering exactly the same\n";
+        $prompt .= "2. Do NOT merge or split lines\n";
+        $prompt .= "3. Keep the order exactly as provided\n";
+        $prompt .= "4. Return ONLY the translations, no explanations\n";
+        $prompt .= "5. For empty lines or placeholders, return them as-is\n\n";
+        $prompt .= "Lines to translate:\n";
+
+        foreach ($textsToTranslate as $index => $text) {
+            $prompt .= ($index + 1) . ". {$text}\n";
+        }
+
+        try {
+            $apiKey = config('services.openai.api_key');
+            if (!$apiKey) {
+                throw new RuntimeException(
+                    'OpenAI API key not configured. Set OPENAI_API_KEY in .env'
+                );
+            }
+
+            $endpoint = config('services.openai.endpoint');
+
+            Log::debug('TranslationService: sending batch translation request', [
+                'segment_count' => count($textsToTranslate),
+                'prompt_length' => strlen($prompt),
+            ]);
+
+            $response = Http::withHeaders([
+                'Authorization' => "Bearer {$apiKey}",
+                'Content-Type' => 'application/json',
+            ])->post("{$endpoint}/chat/completions", [
+                'model' => 'gpt-4o-mini',
+                'messages' => [
+                    [
+                        'role' => 'system',
+                        'content' => 'You are a professional subtitle translator. Translate subtitles accurately while preserving the original meaning, tone, and structure. Return ONLY the translated lines with no other text.',
+                    ],
+                    [
+                        'role' => 'user',
+                        'content' => $prompt,
+                    ],
+                ],
+                'temperature' => 0.3,  // Lower temperature for consistency
+                'max_tokens' => 2048,
+            ]);
+
+            if (!$response->successful()) {
+                $error = $response->json('error.message') ?? $response->body();
+                throw new RuntimeException(
+                    "OpenAI API error ({$response->status()}): {$error}"
+                );
+            }
+
+            $data = $response->json();
+
+            if (!isset($data['choices'][0]['message']['content'])) {
+                throw new RuntimeException('Invalid OpenAI API response format');
+            }
+
+            $translatedText = trim($data['choices'][0]['message']['content']);
+
+            Log::debug('TranslationService: batch translation received', [
+                'response_length' => strlen($translatedText),
+            ]);
+
+            // Parse response: split by newlines and extract translations
+            $translatedLines = array_map('trim', explode("\n", $translatedText));
+
+            // Build result segments with same structure as input
+            $translatedSegments = [];
+            $translatedLineIndex = 0;
+
+            foreach ($segments as $index => $segment) {
+                $translatedLine = $translatedLines[$translatedLineIndex] ?? '';
+
+                // Remove numbering if present (e.g., "1. Translation" -> "Translation")
+                if (preg_match('/^\d+\.\s+(.*)$/', $translatedLine, $matches)) {
+                    $translatedLine = $matches[1];
+                }
+
+                // If no translation received or it's empty, use original
+                if (empty($translatedLine)) {
+                    $translatedLine = trim($segment['text']);
+                }
+
+                $translatedSegments[] = [
+                    'index' => $segment['index'],
+                    'start' => $segment['start'],
+                    'end' => $segment['end'],
+                    'text' => $translatedLine,
+                ];
+
+                $translatedLineIndex++;
+            }
+
+            Log::info('TranslationService: batch translation complete', [
+                'input_count' => count($segments),
+                'output_count' => count($translatedSegments),
+            ]);
+
+            return $translatedSegments;
+
+        } catch (\Exception $e) {
+            Log::error('TranslationService: batch translation failed', [
+                'error' => $e->getMessage(),
+                'segment_count' => count($segments),
+            ]);
+
+            throw new RuntimeException(
+                "Failed to batch translate segments: {$e->getMessage()}"
+            );
+        }
     }
 
     /**

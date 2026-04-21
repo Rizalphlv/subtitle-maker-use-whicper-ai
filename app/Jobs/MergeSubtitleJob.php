@@ -38,20 +38,23 @@ class MergeSubtitleJob implements ShouldQueue
         Log::info("MergeSubtitleJob: Starting for video_id={$videoId}");
 
         try {
+            // Get the language that was actually transcribed
+            $transcribedLanguage = $this->video->target_language === 'en' ? 'en' : 'id';
+            
             // Step 1: Merge all chunk subtitles into single original subtitle
             Log::info("MergeSubtitleJob: Merging subtitles for video_id={$videoId}");
-            $mergeService->merge($videoId, 'en', 'original');
+            $mergeService->merge($videoId, $transcribedLanguage, 'original');
             Log::info("MergeSubtitleJob: Merge complete for video_id={$videoId}");
 
-            // Step 2: Generate SRT for original language (English)
-            Log::info("MergeSubtitleJob: Generating SRT for original (en) for video_id={$videoId}");
-            $srtService->generate($videoId, 'en', 'original');
-            Log::info("MergeSubtitleJob: SRT generated for original (en) for video_id={$videoId}");
+            // Step 2: Generate SRT for original language
+            Log::info("MergeSubtitleJob: Generating SRT for original ({$transcribedLanguage}) for video_id={$videoId}");
+            $srtService->generate($videoId, $transcribedLanguage, 'original');
+            Log::info("MergeSubtitleJob: SRT generated for original ({$transcribedLanguage}) for video_id={$videoId}");
 
-            // Step 3: Translate if target language differs from English
-            if ($this->video->target_language !== 'en') {
-                Log::info("MergeSubtitleJob: Translating from en to {$this->video->target_language} for video_id={$videoId}");
-                $translationService->translate($videoId, 'en', $this->video->target_language);
+            // Step 3: Translate if target language differs from transcribed language
+            if ($this->video->target_language !== $transcribedLanguage) {
+                Log::info("MergeSubtitleJob: Translating from {$transcribedLanguage} to {$this->video->target_language} for video_id={$videoId}");
+                $translationService->translate($videoId, $transcribedLanguage, $this->video->target_language);
                 Log::info("MergeSubtitleJob: Translation complete for video_id={$videoId}");
 
                 // Step 4: Generate SRT for translated language

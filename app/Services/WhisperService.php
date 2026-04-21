@@ -59,17 +59,19 @@ class WhisperService
      * Transcribe an audio chunk from MinIO using Whisper API.
      *
      * @param string $audioMinioPath  MinIO path to audio chunk
-     * @param string $language        Language code: 'en' or 'id'
+     * @param ?string $language       Language code: 'en', 'id', null for auto-detect
+     * @param bool $translate         If true, auto-detect language and translate to English (Whisper mode)
      *
      * @return array  Segments array: [["start" => 0.0, "end" => 2.5, "text" => "..."], ...]
      *
      * @throws RuntimeException  If API call fails or response is invalid.
      */
-    public function transcribe(string $audioMinioPath, string $language = 'en'): array
+    public function transcribe(string $audioMinioPath, ?string $language = 'en', bool $translate = false): array
     {
         Log::info('WhisperService: starting transcription', [
             'audio_path' => $audioMinioPath,
             'language'   => $language,
+            'translate'  => $translate,
         ]);
 
         $tempPath = "temp/whisper/chunk_" . uniqid() . ".mp3";
@@ -79,7 +81,7 @@ class WhisperService
             $this->downloadAudioToTemp($audioMinioPath, $tempPath);
 
             // 2. Call Whisper API.
-            $response = $this->callWhisperApi($tempPath, $language);
+            $response = $this->callWhisperApi($tempPath, $language, $translate);
 
             // 3. Extract and validate segments.
             $segments = $this->extractSegments($response);
@@ -87,6 +89,7 @@ class WhisperService
             Log::info('WhisperService: transcription complete', [
                 'audio_path'   => $audioMinioPath,
                 'segment_count' => count($segments),
+                'detected_language' => $response['language'] ?? $language,
             ]);
 
             return $segments;
@@ -138,7 +141,7 @@ class WhisperService
      *
      * @throws RuntimeException  If API call fails.
      */
-    private function callWhisperApi(string $tempPath, string $language): array
+    private function callWhisperApi(string $tempPath, ?string $language, bool $translate = false): array
     {
         try {
             $absolutePath = Storage::disk(self::TEMP_DISK)->path($tempPath);
@@ -146,7 +149,29 @@ class WhisperService
             Log::debug('WhisperService: calling Whisper API', [
                 'endpoint' => $this->apiEndpoint,
                 'model'    => $this->model,
+                'translate' => $translate,
             ]);
+
+            // Prepare request parameters
+            $params = [
+                'model'    => $this->model,
+                'response_format' => 'verbose_json', // Includes detailed timing info
+            ];
+
+            // If translate mode: auto-detect language and translate to English
+            // Otherwise: transcribe in specified language
+            if ($translate) {
+                // Whisper translate mode: auto-detect and translate to English
+                $endpoint = "{$this->apiEndpoint}/audio/translations";
+                // Don't include language param in translate mode for auto-detection
+            } else {
+                // Normal transcription mode
+                $endpoint = "{$this->apiEndpoint}/audio/transcriptions";
+                // Only add language parameter if specified (null = auto-detect)
+                if ($language !== null) {
+                    $params['language'] = $language;
+                }
+            }
 
             // Use attach() for proper multipart form-data file upload.
             $response = Http::withHeaders([
@@ -155,11 +180,7 @@ class WhisperService
             ->timeout(600) // 10 minute timeout for large files
             ->asMultipart()
             ->attach('file', fopen($absolutePath, 'rb'), 'audio.mp3')
-            ->post("{$this->apiEndpoint}/audio/transcriptions", [
-                'model'    => $this->model,
-                'language' => $language,
-                'response_format' => 'verbose_json', // Includes detailed timing info
-            ]);
+            ->post($endpoint, $params);
 
             if (!$response->successful()) {
                 $errorMsg = $response->json('error.message') ?? $response->body();

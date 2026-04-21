@@ -74,6 +74,8 @@ class MergeSubtitleJobTest extends TestCase
     {
         Queue::fake();
 
+        // When target is 'id', we transcribe directly in Indonesian
+        // No translation happens - we only have the original subtitle in 'id'
         $video = $this->createVideoWithTranscribedChunks(targetLanguage: 'id');
 
         $job = new MergeSubtitleJob($video);
@@ -83,14 +85,16 @@ class MergeSubtitleJobTest extends TestCase
             app(SrtGeneratorService::class),
         );
 
-        // Verify translated subtitle was created
-        $translated = Subtitle::where('video_id', $video->id)
+        // Verify original subtitle was merged (in 'id' language)
+        $original = Subtitle::where('video_id', $video->id)
             ->where('chunk_index', -1)
             ->where('language', 'id')
-            ->where('type', 'translated')
+            ->where('type', 'original')
             ->first();
 
-        $this->assertNotNull($translated);
+        $this->assertNotNull($original);
+        // No translated subtitle should exist for non-English targets 
+        // because we transcribe directly in that language
     }
 
     public function test_job_skips_translation_if_target_is_english()
@@ -119,6 +123,8 @@ class MergeSubtitleJobTest extends TestCase
     {
         Queue::fake();
 
+        // When target is 'id', we transcribe directly in Indonesian
+        // No translation is needed - we only generate SRT for the original 'id' subtitle
         $video = $this->createVideoWithTranscribedChunks(targetLanguage: 'id');
 
         $job = new MergeSubtitleJob($video);
@@ -128,15 +134,15 @@ class MergeSubtitleJobTest extends TestCase
             app(SrtGeneratorService::class),
         );
 
-        // Verify translated SRT was generated and stored
-        $translated = Subtitle::where('video_id', $video->id)
+        // Verify original SRT was generated (in 'id' language)
+        $original = Subtitle::where('video_id', $video->id)
             ->where('chunk_index', -1)
             ->where('language', 'id')
-            ->where('type', 'translated')
+            ->where('type', 'original')
             ->first();
 
-        $this->assertNotNull($translated->path);
-        $this->assertTrue(Storage::disk('minio')->exists($translated->path));
+        $this->assertNotNull($original->path);
+        $this->assertTrue(Storage::disk('minio')->exists($original->path));
     }
 
     public function test_job_updates_video_status_to_done()
@@ -245,10 +251,13 @@ class MergeSubtitleJobTest extends TestCase
         ]);
 
         // Create transcribed subtitle for chunk
+        // Language should match what was transcribed: 'en' for English target, 'id' for Indonesian target
+        $subtitleLanguage = $targetLanguage === 'en' ? 'en' : 'id';
+        
         Subtitle::create([
             'video_id' => $video->id,
             'chunk_index' => 0,
-            'language' => 'en',
+            'language' => $subtitleLanguage,
             'raw_transcript' => [
                 ['index' => 1, 'start' => 0.0, 'end' => 2.5, 'text' => 'Chunk one segment one'],
                 ['index' => 2, 'start' => 2.5, 'end' => 5.0, 'text' => 'Chunk one segment two'],
@@ -273,6 +282,9 @@ class MergeSubtitleJobTest extends TestCase
             'minio_path' => 'videos/test/original.mp4',
         ]);
 
+        // Language should match what was transcribed: 'en' for English target, 'id' for Indonesian target
+        $subtitleLanguage = $targetLanguage === 'en' ? 'en' : 'id';
+
         // Create first chunk
         AudioChunk::create([
             'video_id' => $video->id,
@@ -285,7 +297,7 @@ class MergeSubtitleJobTest extends TestCase
         Subtitle::create([
             'video_id' => $video->id,
             'chunk_index' => 0,
-            'language' => 'en',
+            'language' => $subtitleLanguage,
             'raw_transcript' => [
                 ['index' => 1, 'start' => 0.0, 'end' => 2.5, 'text' => 'Chunk zero segment one'],
                 ['index' => 2, 'start' => 2.5, 'end' => 5.0, 'text' => 'Chunk zero segment two'],
@@ -307,7 +319,7 @@ class MergeSubtitleJobTest extends TestCase
         Subtitle::create([
             'video_id' => $video->id,
             'chunk_index' => 1,
-            'language' => 'en',
+            'language' => $subtitleLanguage,
             'raw_transcript' => [
                 ['index' => 1, 'start' => 0.0, 'end' => 2.5, 'text' => 'Chunk one segment one'],
                 ['index' => 2, 'start' => 2.5, 'end' => 5.0, 'text' => 'Chunk one segment two'],

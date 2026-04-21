@@ -21,7 +21,7 @@ use Throwable;
  *  5. Return the MinIO path of the audio.
  *
  * FFmpeg command:
- *   ffmpeg -i input.mp4 -vn -acodec mp3 -ab 64k output.mp3
+ *   ffmpeg -i input.mp4 -vn -acodec mp3 -ab 48k output.mp3
  *
  * Storage layout (MinIO):
  *   videos/{upload_id}/original.{ext}   ← input video
@@ -115,11 +115,11 @@ class AudioExtractionService
     /**
      * Execute FFmpeg to extract audio from video.
      *
-     * Command: ffmpeg -i input.mp4 -vn -acodec mp3 -ab 64k output.mp3
+     * Command: ffmpeg -i input.mp4 -vn -acodec mp3 -ab 48k output.mp3
      *   -i        input file
      *   -vn       no video output
      *   -acodec   audio codec (mp3)
-     *   -ab       audio bitrate (64 kbps — good for speech, small file)
+     *   -ab       audio bitrate (48 kbps — optimized for speech, smaller file, faster processing)
      */
     private function runFFmpeg(string $inputPath, string $outputPath): void
     {
@@ -133,7 +133,7 @@ class AudioExtractionService
             '-i', $inputAbsPath,
             '-vn',
             '-acodec', 'mp3',
-            '-ab', '64k',
+            '-ab', '48k',  // OPTIMIZATION: Reduced from 64k for smaller file size
             '-y', // Overwrite output file without asking
             $outputAbsPath,
         ];

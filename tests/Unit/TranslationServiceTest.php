@@ -23,24 +23,15 @@ class TranslationServiceTest extends TestCase
 
     public function test_translate_english_to_indonesian()
     {
-        // Mock OpenAI API responses for each segment
+        // Mock OpenAI API for BATCH translation (single request with all segments)
         Http::fake([
-            'https://api.openai.com/v1/chat/completions' => Http::sequence()
-                ->push([
-                    'choices' => [[
-                        'message' => ['content' => 'Halo dunia'],
-                    ]],
-                ])
-                ->push([
-                    'choices' => [[
-                        'message' => ['content' => 'Ini adalah ujian'],
-                    ]],
-                ])
-                ->push([
-                    'choices' => [[
-                        'message' => ['content' => 'Subtitle yang diterjemahkan'],
-                    ]],
-                ]),
+            'https://api.openai.com/v1/chat/completions' => Http::response([
+                'choices' => [[
+                    'message' => ['content' => 
+                        "1. Halo dunia\n2. Ini adalah ujian\n3. Subtitle yang diterjemahkan"
+                    ],
+                ]],
+            ]),
         ]);
 
         // Setup: Create video with merged subtitle
