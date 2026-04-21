@@ -133,7 +133,7 @@ class AudioExtractionService
             '-i', $inputAbsPath,
             '-vn',
             '-acodec', 'mp3',
-            '-ab', '48k',  // OPTIMIZATION: Reduced from 64k for smaller file size
+            '-ab', '60k',  // Increased from 48k for better audio quality & accuracy
             '-y', // Overwrite output file without asking
             $outputAbsPath,
         ];

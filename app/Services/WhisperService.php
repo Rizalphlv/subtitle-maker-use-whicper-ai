@@ -173,6 +173,14 @@ class WhisperService
                 }
             }
 
+            // Add quality improvements
+            $params['temperature'] = 0.2;  // Lower temperature = more accurate, less hallucination
+            
+            // Add language hint if specified (helps reduce mixed language confusion)
+            if ($language === 'id') {
+                $params['prompt'] = 'Transkripsi dalam bahasa Indonesia';  // Indonesian-only hint
+            }
+
             // Use attach() for proper multipart form-data file upload.
             $response = Http::withHeaders([
                 'Authorization' => "Bearer {$this->apiKey}",
