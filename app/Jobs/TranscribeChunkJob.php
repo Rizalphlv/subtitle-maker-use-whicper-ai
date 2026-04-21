@@ -45,7 +45,7 @@ class TranscribeChunkJob implements ShouldQueue
         public readonly AudioChunk $audioChunk,
     ) {}
 
-    public function handle(): void
+    public function handle(WhisperService $whisperService): void
     {
         try {
             Log::info('TranscribeChunkJob: starting', [
@@ -63,20 +63,34 @@ class TranscribeChunkJob implements ShouldQueue
             }
 
             // Get the target language from the parent Video record.
-            $video = $this->audioChunk->video;
-
             // Always transcribe in English (the source language)
             // Translation to target language happens later in MergeSubtitleJob
             $transcribeLanguage = 'en';
 
             // Call Whisper API to transcribe this chunk.
-            $whisperService = new WhisperService();
             $segments = $whisperService->transcribe($this->audioChunk->path, $transcribeLanguage);
 
             Log::info('TranscribeChunkJob: transcription received', [
                 'audio_chunk_id' => $this->audioChunk->id,
                 'segment_count'  => count($segments),
             ]);
+
+            if ($segments === []) {
+                Subtitle::where('video_id', $this->audioChunk->video_id)
+                    ->where('chunk_index', $this->audioChunk->chunk_index)
+                    ->where('language', 'en')
+                    ->where('type', 'original')
+                    ->delete();
+
+                $this->audioChunk->markAsTranscribed();
+
+                Log::info('TranscribeChunkJob: non-speech chunk skipped without subtitle record', [
+                    'audio_chunk_id' => $this->audioChunk->id,
+                    'chunk_index' => $this->audioChunk->chunk_index,
+                ]);
+
+                return;
+            }
 
             // Store raw transcript in Subtitle record.
             $subtitle = Subtitle::updateOrCreate(

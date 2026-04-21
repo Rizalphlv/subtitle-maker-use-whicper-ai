@@ -48,13 +48,13 @@ class MergeSubtitleService
         }
 
         // Check all chunks have been transcribed
-        $transcodedChunks = AudioChunk::where('video_id', $videoId)
+        $completedChunks = AudioChunk::where('video_id', $videoId)
             ->where('status', 'transcribed')
             ->count();
 
-        if ($transcodedChunks !== $totalChunks) {
+        if ($completedChunks !== $totalChunks) {
             throw new RuntimeException(
-                "Not all chunks transcribed: {$transcodedChunks}/{$totalChunks} for video {$videoId}"
+                "Not all chunks transcribed: {$completedChunks}/{$totalChunks} for video {$videoId}"
             );
         }
 
@@ -66,7 +66,9 @@ class MergeSubtitleService
         // ─────────────────────────────────────────────────────────────────────────
         // Validate merged timeline (check for gaps/overlaps)
         // ─────────────────────────────────────────────────────────────────────────
-        $this->validateTimeline($normalizedSegments);
+        if ($normalizedSegments !== []) {
+            $this->validateTimeline($normalizedSegments);
+        }
 
         // ─────────────────────────────────────────────────────────────────────────
         // Extract segment data for storage (remove chunk_index, keep index)

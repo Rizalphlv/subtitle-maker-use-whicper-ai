@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -43,12 +42,14 @@ class WhisperService
     private string $apiKey;
     private string $apiEndpoint;
     private string $model;
+    private SpeechDetectionService $speechDetectionService;
 
-    public function __construct()
+    public function __construct(?SpeechDetectionService $speechDetectionService = null)
     {
         $this->apiKey       = config('services.openai.api_key') ?? env('OPENAI_API_KEY');
         $this->apiEndpoint  = config('services.openai.endpoint') ?? env('OPENAI_ENDPOINT', 'https://api.openai.com/v1');
         $this->model        = config('services.openai.model') ?? env('OPENAI_WHISPER_MODEL', 'whisper-1');
+        $this->speechDetectionService = $speechDetectionService ?? new SpeechDetectionService();
 
         if (!$this->apiKey) {
             throw new RuntimeException('OPENAI_API_KEY not configured. Set OPENAI_API_KEY environment variable.');
@@ -78,11 +79,22 @@ class WhisperService
             // 1. Download audio chunk to temp storage.
             $this->downloadAudioToTemp($audioMinioPath, $tempPath);
 
+            $absolutePath = Storage::disk(self::TEMP_DISK)->path($tempPath);
+
+            if ($this->speechDetectionService->shouldSkipBeforeTranscription($absolutePath)) {
+                Log::info('WhisperService: skipped Whisper API call for non-speech chunk', [
+                    'audio_path' => $audioMinioPath,
+                ]);
+
+                return [];
+            }
+
             // 2. Call Whisper API.
             $response = $this->callWhisperApi($tempPath, $language);
 
             // 3. Extract and validate segments.
             $segments = $this->extractSegments($response);
+            $segments = $this->speechDetectionService->filterMeaningfulSegments($segments);
 
             Log::info('WhisperService: transcription complete', [
                 'audio_path'   => $audioMinioPath,
@@ -211,7 +223,7 @@ class WhisperService
         // Allow empty segments (e.g., silent audio chunks at end of video with credits/silence)
         // The merge process will skip chunks with no segments
         if (empty($segments)) {
-            Log::info('WhisperService: empty segments returned (likely silent/empty audio chunk)', [
+            Log::info('WhisperService: no meaningful speech detected after filtering', [
                 'response_keys' => array_keys($response),
             ]);
         }

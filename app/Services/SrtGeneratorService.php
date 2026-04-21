@@ -60,12 +60,6 @@ class SrtGeneratorService
         // Get segments
         $segments = $subtitle->raw_transcript ?? [];
 
-        if (empty($segments)) {
-            throw new RuntimeException(
-                "No segments found for video {$videoId}, language {$language}, type {$type}"
-            );
-        }
-
         // ─────────────────────────────────────────────────────────────────────────
         // Build SRT content
         // ─────────────────────────────────────────────────────────────────────────
@@ -134,6 +128,10 @@ class SrtGeneratorService
      */
     protected function buildSrtContent(array $segments): string
     {
+        if ($segments === []) {
+            return '';
+        }
+
         $lines = [];
 
         foreach ($segments as $segment) {

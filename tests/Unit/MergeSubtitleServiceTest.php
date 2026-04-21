@@ -187,6 +187,60 @@ class MergeSubtitleServiceTest extends TestCase
         $this->service->merge($video->id, 'en', 'original');
     }
 
+    public function test_merge_allows_skipped_chunks_without_shifting_timeline()
+    {
+        $video = Video::create([
+            'upload_id' => 'test-skipped-' . now()->timestamp,
+            'filename' => 'test.mp4',
+            'original_name' => 'test.mp4',
+            'total_chunks' => 3,
+            'status' => 'processing',
+            'target_language' => 'en',
+            'minio_path' => 'videos/test/original.mp4',
+        ]);
+
+        foreach ([0, 1, 2] as $index) {
+            AudioChunk::create([
+                'video_id' => $video->id,
+                'chunk_index' => $index,
+                'start_time' => $index * 60,
+                'path' => "videos/test/chunks/chunk_{$index}.mp3",
+                'status' => 'transcribed',
+            ]);
+        }
+
+        Subtitle::create([
+            'video_id' => $video->id,
+            'chunk_index' => 0,
+            'language' => 'en',
+            'raw_transcript' => [
+                ['start' => 0.0, 'end' => 2.0, 'text' => 'Opening line'],
+            ],
+            'path' => null,
+            'type' => 'original',
+            'status' => 'transcribed',
+        ]);
+
+        Subtitle::create([
+            'video_id' => $video->id,
+            'chunk_index' => 2,
+            'language' => 'en',
+            'raw_transcript' => [
+                ['start' => 0.0, 'end' => 3.0, 'text' => 'Closing line'],
+            ],
+            'path' => null,
+            'type' => 'original',
+            'status' => 'transcribed',
+        ]);
+
+        $merged = $this->service->merge($video->id, 'en', 'original');
+
+        $this->assertCount(2, $merged->raw_transcript);
+        $this->assertEquals(0.0, $merged->raw_transcript[0]['start']);
+        $this->assertEquals(120.0, $merged->raw_transcript[1]['start']);
+        $this->assertEquals('Closing line', $merged->raw_transcript[1]['text']);
+    }
+
     public function test_get_merged_retrieves_merged_record()
     {
         $video = $this->createVideoWithChunks(1);

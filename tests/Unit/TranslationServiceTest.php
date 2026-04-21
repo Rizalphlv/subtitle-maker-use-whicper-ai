@@ -225,6 +225,36 @@ class TranslationServiceTest extends TestCase
         $this->service->translate($video->id, 'en', 'id');
     }
 
+    public function test_translate_allows_empty_merged_subtitle(): void
+    {
+        $video = Video::create([
+            'upload_id' => 'test-empty-merge-' . now()->timestamp,
+            'filename' => 'test.mp4',
+            'original_name' => 'test.mp4',
+            'total_chunks' => 1,
+            'status' => 'processing',
+            'target_language' => 'id',
+            'minio_path' => 'videos/test/original.mp4',
+        ]);
+
+        Subtitle::create([
+            'video_id' => $video->id,
+            'chunk_index' => -1,
+            'language' => 'en',
+            'raw_transcript' => [],
+            'path' => null,
+            'type' => 'original',
+            'status' => 'transcribed',
+        ]);
+
+        $translated = $this->service->translate($video->id, 'en', 'id');
+
+        $this->assertNotNull($translated);
+        $this->assertSame([], $translated->raw_transcript);
+        $this->assertEquals('id', $translated->language);
+        $this->assertEquals('translated', $translated->type);
+    }
+
     public function test_is_translation_needed()
     {
         $this->assertTrue($this->service->isTranslationNeeded('en', 'id'));

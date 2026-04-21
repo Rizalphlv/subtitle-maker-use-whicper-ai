@@ -23,7 +23,7 @@ class SubtitleNormalizerService
      */
     public function normalize(int $videoId, string $language = 'en'): array
     {
-        $video = Video::findOrFail($videoId);
+        Video::findOrFail($videoId);
 
         // Get all audio chunks sorted by chunk_index (⚠️ CRITICAL: Chunk Ordering)
         $chunks = AudioChunk::where('video_id', $videoId)
@@ -39,45 +39,35 @@ class SubtitleNormalizerService
             ->where('language', $language)
             ->where('chunk_index', '>=', 0)  // Skip merged records (chunk_index = -1)
             ->orderBy('chunk_index')
-            ->get();
-
-        if ($subtitles->isEmpty()) {
-            throw new RuntimeException("No subtitles found for video {$videoId} in language {$language}");
-        }
+            ->get()
+            ->keyBy('chunk_index');
 
         $allSegments = [];
 
         // ─────────────────────────────────────────────────────────────────────────
         // Apply offset to each subtitle chunk
         // ─────────────────────────────────────────────────────────────────────────
-        foreach ($subtitles as $subtitle) {
-            // Find corresponding audio chunk to get start_time
-            $audioChunk = $chunks->firstWhere('chunk_index', $subtitle->chunk_index);
-
-            if (!$audioChunk) {
-                throw new RuntimeException(
-                    "Audio chunk not found for chunk_index {$subtitle->chunk_index} in video {$videoId}"
-                );
+        foreach ($chunks as $audioChunk) {
+            $subtitle = $subtitles->get($audioChunk->chunk_index);
+            if (!$subtitle) {
+                continue;
             }
 
-            $chunkStartTime = $audioChunk->start_time; // in seconds
-
-            // Get raw segments from Whisper output
+            $chunkStartTime = $audioChunk->start_time;
             $rawSegments = $subtitle->raw_transcript ?? [];
 
-            // Apply offset to each segment
             foreach ($rawSegments as $segment) {
                 $allSegments[] = [
                     'start' => $segment['start'] + $chunkStartTime,
                     'end' => $segment['end'] + $chunkStartTime,
                     'text' => $segment['text'],
-                    'chunk_index' => $subtitle->chunk_index,
+                    'chunk_index' => $audioChunk->chunk_index,
                 ];
             }
         }
 
         if (empty($allSegments)) {
-            throw new RuntimeException("No segments found after normalization for video {$videoId}");
+            return [];
         }
 
         // ─────────────────────────────────────────────────────────────────────────

@@ -167,7 +167,7 @@ class SrtGeneratorServiceTest extends TestCase
         $this->assertEquals("First line\nSecond line", $segments[0]['text']);
     }
 
-    public function test_generate_fails_without_segments()
+    public function test_generate_allows_empty_srt_for_silent_video()
     {
         $video = Video::create([
             'upload_id' => 'test-no-segments-' . now()->timestamp,
@@ -190,10 +190,10 @@ class SrtGeneratorServiceTest extends TestCase
             'status' => 'transcribed',
         ]);
 
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('No segments found');
+        $minioPath = $this->service->generate($video->id, 'en', 'original');
 
-        $this->service->generate($video->id, 'en', 'original');
+        $this->assertTrue(Storage::disk('minio')->exists($minioPath));
+        $this->assertSame('', Storage::disk('minio')->get($minioPath));
     }
 
     public function test_generate_requires_merged_subtitle()

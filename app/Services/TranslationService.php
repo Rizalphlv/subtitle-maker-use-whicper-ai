@@ -77,7 +77,18 @@ class TranslationService
         $segments = $mergedSubtitle->raw_transcript ?? [];
 
         if (empty($segments)) {
-            throw new RuntimeException("No segments found to translate for video {$videoId}");
+            return Subtitle::updateOrCreate(
+                [
+                    'video_id' => $videoId,
+                    'chunk_index' => -1,
+                    'language' => $targetLanguage,
+                    'type' => 'translated',
+                ],
+                [
+                    'raw_transcript' => [],
+                    'status' => 'transcribed',
+                ]
+            );
         }
 
         // ─────────────────────────────────────────────────────────────────────────
