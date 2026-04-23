@@ -39,6 +39,8 @@ return [
         'api_key'   => env('OPENAI_API_KEY'),
         'endpoint'  => env('OPENAI_ENDPOINT', 'https://api.openai.com/v1'),
         'model'     => env('OPENAI_WHISPER_MODEL', 'whisper-1'),
+        'translation_model' => env('OPENAI_TRANSLATION_MODEL', 'gpt-4o-mini'),
+        'translation_batch_size' => env('OPENAI_TRANSLATION_BATCH_SIZE', 1),
     ],
 
 ];

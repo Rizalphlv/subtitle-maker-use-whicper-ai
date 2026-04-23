@@ -18,29 +18,18 @@ class TranslationServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['services.openai.translation_batch_size' => 20]);
         $this->service = new TranslationService();
     }
 
     public function test_translate_english_to_indonesian()
     {
-        // Mock OpenAI API responses for each segment
         Http::fake([
-            'https://api.openai.com/v1/chat/completions' => Http::sequence()
-                ->push([
-                    'choices' => [[
-                        'message' => ['content' => 'Halo dunia'],
-                    ]],
-                ])
-                ->push([
-                    'choices' => [[
-                        'message' => ['content' => 'Ini adalah ujian'],
-                    ]],
-                ])
-                ->push([
-                    'choices' => [[
-                        'message' => ['content' => 'Subtitle yang diterjemahkan'],
-                    ]],
-                ]),
+            'https://api.openai.com/v1/chat/completions' => $this->fakeTranslationResponse([
+                'Halo dunia',
+                'Ini adalah ujian',
+                'Subtitle yang diterjemahkan',
+            ]),
         ]);
 
         // Setup: Create video with merged subtitle
@@ -63,6 +52,7 @@ class TranslationServiceTest extends TestCase
         $this->assertEquals('Halo dunia', $segments[0]['text']);
         $this->assertEquals('Ini adalah ujian', $segments[1]['text']);
         $this->assertEquals('Subtitle yang diterjemahkan', $segments[2]['text']);
+        Http::assertSentCount(1);
 
         // Timestamps should be unchanged
         $this->assertEquals(0.0, $segments[0]['start']);
@@ -89,12 +79,12 @@ class TranslationServiceTest extends TestCase
 
     public function test_translate_preserves_timestamps()
     {
-        // Mock OpenAI responses
         Http::fake([
-            'https://api.openai.com/v1/chat/completions' => Http::sequence()
-                ->push(['choices' => [['message' => ['content' => 'Teks terjemahan 1']]]])
-                ->push(['choices' => [['message' => ['content' => 'Teks terjemahan 2']]]])
-                ->push(['choices' => [['message' => ['content' => 'Teks terjemahan 3']]]])
+            'https://api.openai.com/v1/chat/completions' => $this->fakeTranslationResponse([
+                'Teks terjemahan 1',
+                'Teks terjemahan 2',
+                'Teks terjemahan 3',
+            ]),
         ]);
 
         $video = $this->createVideoWithMergedSubtitle();
@@ -118,12 +108,12 @@ class TranslationServiceTest extends TestCase
 
     public function test_translate_preserves_segmentation()
     {
-        // Mock OpenAI responses
         Http::fake([
-            'https://api.openai.com/v1/chat/completions' => Http::sequence()
-                ->push(['choices' => [['message' => ['content' => 'Segmen 1']]]])
-                ->push(['choices' => [['message' => ['content' => 'Segmen 2']]]])
-                ->push(['choices' => [['message' => ['content' => 'Segmen 3']]]])
+            'https://api.openai.com/v1/chat/completions' => $this->fakeTranslationResponse([
+                'Segmen 1',
+                'Segmen 2',
+                'Segmen 3',
+            ]),
         ]);
 
         $video = $this->createVideoWithMergedSubtitle();
@@ -151,12 +141,8 @@ class TranslationServiceTest extends TestCase
     {
         Http::fake([
             'https://api.openai.com/v1/chat/completions' => Http::sequence()
-                ->push(['choices' => [['message' => ['content' => 'Halo']]]])
-                ->push(['choices' => [['message' => ['content' => 'Dunia']]]])
-                ->push(['choices' => [['message' => ['content' => 'Lagi']]]])
-                ->push(['choices' => [['message' => ['content' => 'Halo']]]])
-                ->push(['choices' => [['message' => ['content' => 'Dunia']]]])
-                ->push(['choices' => [['message' => ['content' => 'Lagi']]]])
+                ->push($this->makeTranslationPayload(['Halo', 'Dunia', 'Lagi']))
+                ->push($this->makeTranslationPayload(['Halo', 'Dunia', 'Lagi']))
         ]);
 
         $video = $this->createVideoWithMergedSubtitle();
@@ -175,6 +161,7 @@ class TranslationServiceTest extends TestCase
             ->where('type', 'translated')
             ->count();
         $this->assertEquals(1, $count);
+        Http::assertSentCount(2);
     }
 
     public function test_translate_handles_api_error()
@@ -266,10 +253,11 @@ class TranslationServiceTest extends TestCase
     public function test_get_translated_subtitle()
     {
         Http::fake([
-            'https://api.openai.com/v1/chat/completions' => Http::sequence()
-                ->push(['choices' => [['message' => ['content' => 'Halo']]]])
-                ->push(['choices' => [['message' => ['content' => 'Dunia']]]])
-                ->push(['choices' => [['message' => ['content' => 'Lagi']]]])
+            'https://api.openai.com/v1/chat/completions' => $this->fakeTranslationResponse([
+                'Halo',
+                'Dunia',
+                'Lagi',
+            ]),
         ]);
 
         $video = $this->createVideoWithMergedSubtitle();
@@ -296,9 +284,66 @@ class TranslationServiceTest extends TestCase
         $this->service->translate($video->id, 'en', 'id');
     }
 
+    public function test_translate_batches_large_segment_list(): void
+    {
+        Http::fake([
+            'https://api.openai.com/v1/chat/completions' => Http::sequence()
+                ->push($this->makeTranslationPayload(array_map(
+                    static fn (int $number) => "Terjemahan {$number}",
+                    range(1, 20)
+                )))
+                ->push($this->makeTranslationPayload([
+                    'Terjemahan 21',
+                    'Terjemahan 22',
+                    'Terjemahan 23',
+                    'Terjemahan 24',
+                    'Terjemahan 25',
+                ])),
+        ]);
+
+        $video = $this->createVideoWithMergedSubtitle(25);
+
+        $translated = $this->service->translate($video->id, 'en', 'id');
+
+        $this->assertCount(25, $translated->raw_transcript);
+        $this->assertEquals('Terjemahan 1', $translated->raw_transcript[0]['text']);
+        $this->assertEquals('Terjemahan 25', $translated->raw_transcript[24]['text']);
+        Http::assertSentCount(2);
+    }
+
+    public function test_translate_falls_back_when_batch_result_is_suspicious(): void
+    {
+        Http::fake([
+            'https://api.openai.com/v1/chat/completions' => Http::sequence()
+                ->push($this->makeTranslationPayload([
+                    'oh',
+                    'oh',
+                    'ayo',
+                ]))
+                ->push($this->makeTranslationPayload([
+                    'Apakah ada yang merasa dunia ini penuh dengan orang baik?',
+                ]))
+                ->push($this->makeTranslationPayload([
+                    'Atau sudah waktunya untuk direset?',
+                ]))
+                ->push($this->makeTranslationPayload([
+                    'Baik semuanya, aku punya sesuatu untuk diumumkan.',
+                ])),
+        ]);
+
+        $video = $this->createVideoWithMergedSubtitle();
+
+        $translated = $this->service->translate($video->id, 'en', 'id');
+
+        $this->assertEquals('Apakah ada yang merasa dunia ini penuh dengan orang baik?', $translated->raw_transcript[0]['text']);
+        $this->assertEquals('Atau sudah waktunya untuk direset?', $translated->raw_transcript[1]['text']);
+        $this->assertEquals('Baik semuanya, aku punya sesuatu untuk diumumkan.', $translated->raw_transcript[2]['text']);
+        Http::assertSentCount(4);
+    }
+
     // ── Helper Methods ────────────────────────────────────────────────────────
 
-    protected function createVideoWithMergedSubtitle(): Video
+    protected function createVideoWithMergedSubtitle(int $segmentCount = 3): Video
     {
         $video = Video::create([
             'upload_id' => 'test-trans-' . now()->timestamp,
@@ -311,20 +356,58 @@ class TranslationServiceTest extends TestCase
         ]);
 
         // Create merged subtitle (chunk_index = -1)
+        $segments = [];
+        for ($index = 1; $index <= $segmentCount; $index++) {
+            $start = ($index - 1) * 2.5;
+            $segments[] = [
+                'index' => $index,
+                'start' => $start,
+                'end' => $start + 2.5,
+                'text' => $segmentCount === 3
+                    ? [
+                        1 => 'Hello world',
+                        2 => 'This is a test',
+                        3 => 'Translated subtitle',
+                    ][$index]
+                    : "Segment {$index}",
+            ];
+        }
+
         Subtitle::create([
             'video_id' => $video->id,
             'chunk_index' => -1,
             'language' => 'en',
-            'raw_transcript' => [
-                ['index' => 1, 'start' => 0.0, 'end' => 2.5, 'text' => 'Hello world'],
-                ['index' => 2, 'start' => 2.5, 'end' => 5.0, 'text' => 'This is a test'],
-                ['index' => 3, 'start' => 5.0, 'end' => 7.5, 'text' => 'Translated subtitle'],
-            ],
+            'raw_transcript' => $segments,
             'path' => null,
             'type' => 'original',
             'status' => 'transcribed',
         ]);
 
         return $video;
+    }
+
+    protected function fakeTranslationResponse(array $translations): \Closure
+    {
+        return fn () => Http::response($this->makeTranslationPayload($translations));
+    }
+
+    protected function makeTranslationPayload(array $translations): array
+    {
+        return [
+            'choices' => [[
+                'message' => [
+                    'content' => json_encode([
+                        'translations' => array_map(
+                            static fn (string $text, int $index) => [
+                                'index' => $index + 1,
+                                'text' => $text,
+                            ],
+                            array_values($translations),
+                            array_keys(array_values($translations))
+                        ),
+                    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                ],
+            ]],
+        ];
     }
 }
