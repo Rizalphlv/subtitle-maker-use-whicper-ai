@@ -11,6 +11,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Throwable;
 
 /**
@@ -41,6 +42,14 @@ class TranscribeChunkJob implements ShouldQueue
      */
     public int $timeout = 600;
 
+    /**
+     * Groq rate limit key — shared across all TranscribeChunkJob instances.
+     * Capped at 18 requests per 60 seconds (Groq limit is 20/min).
+     */
+    private const RATE_LIMIT_KEY     = 'groq_whisper_requests';
+    private const RATE_LIMIT_MAX     = 18;
+    private const RATE_LIMIT_DECAY_S = 60;
+
     public function __construct(
         public readonly AudioChunk $audioChunk,
     ) {}
@@ -62,16 +71,27 @@ class TranscribeChunkJob implements ShouldQueue
                 return;
             }
 
-            // Get the target language from the parent Video record.
-            $video = $this->audioChunk->video;
+            // Rate limit guard: max 18 requests per 60 seconds to stay within
+            // Groq's 20 req/min free tier limit.
+            if (!RateLimiter::attempt(
+                self::RATE_LIMIT_KEY,
+                self::RATE_LIMIT_MAX,
+                fn () => true,
+                self::RATE_LIMIT_DECAY_S
+            )) {
+                $retryAfter = RateLimiter::availableIn(self::RATE_LIMIT_KEY);
+                Log::warning('TranscribeChunkJob: Groq rate limit reached, re-queuing', [
+                    'audio_chunk_id' => $this->audioChunk->id,
+                    'retry_after_s'  => $retryAfter,
+                ]);
+                $this->release($retryAfter + 1);
+                return;
+            }
 
-            // Always transcribe in English (the source language)
-            // Translation to target language happens later in MergeSubtitleJob
-            $transcribeLanguage = 'en';
-
-            // Call Whisper API to transcribe this chunk.
+            // Call Groq Whisper translation API — auto-detects source language,
+            // always outputs English text.
             $whisperService = new WhisperService();
-            $segments = $whisperService->transcribe($this->audioChunk->path, $transcribeLanguage);
+            $segments = $whisperService->transcribe($this->audioChunk->path);
 
             Log::info('TranscribeChunkJob: transcription received', [
                 'audio_chunk_id' => $this->audioChunk->id,
