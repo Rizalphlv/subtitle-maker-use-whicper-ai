@@ -35,8 +35,8 @@ class AudioChunkService
     private const ASSET_DISK = 'minio';
     private const TEMP_DISK = 'local';
 
-    /** Segment duration in seconds. */
-    private const SEGMENT_DURATION = 60;
+    /** Segment duration in seconds (2 minutes). */
+    private const SEGMENT_DURATION = 120;
 
     /**
      * Split audio into chunks and create database records.
@@ -119,9 +119,9 @@ class AudioChunkService
     /**
      * Execute FFmpeg to segment audio into fixed-duration chunks.
      *
-     * Command: ffmpeg -i audio.mp3 -f segment -segment_time 60 -c copy chunk_%03d.mp3
+     * Command: ffmpeg -i audio.mp3 -f segment -segment_time 120 -c copy chunk_%03d.mp3
      *   -f segment          output format
-     *   -segment_time 60    segment duration in seconds
+     *   -segment_time 120   segment duration in seconds (2 minutes)
      *   -c copy             copy codec (no re-encoding, fast)
      *   chunk_%03d.mp3      output file pattern (chunk_000.mp3, chunk_001.mp3, ...)
      *

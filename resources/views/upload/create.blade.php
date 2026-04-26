@@ -5,193 +5,176 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Upload Video - Subtitle Generator</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #0a0a0a;
             min-height: 100vh;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 20px;
+            padding: 24px;
+            color: #e5e7eb;
         }
 
-        .container {
+        .brand {
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #6b7280;
+            margin-bottom: 32px;
+            text-align: center;
+        }
+
+        .card {
             width: 100%;
-            max-width: 600px;
-            background: white;
+            max-width: 520px;
+            background: #111111;
+            border: 1px solid #1f1f1f;
             border-radius: 12px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            padding: 40px;
+            padding: 36px;
         }
 
-        h1 {
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 28px;
+        .card-header {
+            margin-bottom: 28px;
         }
 
-        .subtitle {
-            color: #666;
-            margin-bottom: 30px;
-            font-size: 14px;
+        .card-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #f9fafb;
+            margin-bottom: 4px;
         }
 
-        .alert {
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            font-size: 14px;
-        }
-
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
+        .card-desc {
+            font-size: 13px;
+            color: #6b7280;
         }
 
         .alert-error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-
-        .form-group {
+            background: #1c0a0a;
+            border: 1px solid #3f1010;
+            border-radius: 8px;
+            padding: 12px 16px;
             margin-bottom: 24px;
+            font-size: 13px;
+            color: #f87171;
         }
 
-        label {
+        .alert-error div + div { margin-top: 4px; }
+
+        .form-group { margin-bottom: 20px; }
+
+        .form-label {
             display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: #d1d5db;
             margin-bottom: 8px;
-            font-weight: 600;
-            color: #333;
-            font-size: 14px;
         }
 
-        .file-input-wrapper {
-            position: relative;
-            display: inline-block;
-            width: 100%;
+        .form-hint {
+            font-size: 12px;
+            color: #4b5563;
+            margin-top: 6px;
         }
 
         input[type="file"],
-        input[type="text"],
-        select {
+        input[type="text"] {
             width: 100%;
-            padding: 12px 16px;
-            border: 2px solid #e0e0e0;
+            padding: 10px 14px;
+            background: #0a0a0a;
+            border: 1px solid #262626;
             border-radius: 8px;
-            font-size: 14px;
-            transition: border-color 0.3s;
+            font-size: 13px;
+            color: #e5e7eb;
             font-family: inherit;
+            transition: border-color 0.15s, box-shadow 0.15s;
         }
 
         input[type="file"]:focus,
-        input[type="text"]:focus,
-        select:focus {
+        input[type="text"]:focus {
             outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            border-color: #404040;
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.04);
         }
 
-        .file-info {
-            margin-top: 8px;
-            font-size: 13px;
-            color: #666;
+        input[type="file"] { cursor: pointer; }
+
+        input::placeholder { color: #4b5563; }
+
+        .divider {
+            height: 1px;
+            background: #1f1f1f;
+            margin: 24px 0;
         }
 
-        .language-options {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-        }
-
-        .radio-option {
-            position: relative;
-        }
-
-        .radio-option input[type="radio"] {
-            display: none;
-        }
-
-        .radio-label {
-            display: block;
-            padding: 12px 16px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s;
-            font-weight: 600;
-            color: #666;
-        }
-
-        .radio-option input[type="radio"]:checked + .radio-label {
-            background: #667eea;
-            color: white;
-            border-color: #667eea;
-        }
-
-        .radio-label:hover {
-            border-color: #667eea;
-        }
-
-        button {
+        .btn-primary {
             width: 100%;
-            padding: 14px 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            padding: 11px 20px;
+            background: #ffffff;
+            color: #0a0a0a;
             border: none;
             border-radius: 8px;
-            font-size: 16px;
+            font-size: 14px;
             font-weight: 600;
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: background 0.15s, transform 0.1s;
+            font-family: inherit;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
 
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        .btn-primary:hover { background: #e5e7eb; }
+        .btn-primary:active { transform: scale(0.99); }
+        .btn-primary:disabled {
+            background: #262626;
+            color: #6b7280;
+            cursor: not-allowed;
+            transform: none;
         }
 
-        button:active {
-            transform: translateY(0);
+        .spinner {
+            display: none;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #6b7280;
+            border-top-color: #d1d5db;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            flex-shrink: 0;
         }
 
-        .footer {
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .footer-note {
             text-align: center;
             margin-top: 20px;
             font-size: 12px;
-            color: #999;
+            color: #374151;
         }
 
-        @media (max-width: 600px) {
-            .container {
-                padding: 30px 20px;
-            }
-
-            h1 {
-                font-size: 24px;
-            }
-
-            .language-options {
-                grid-template-columns: 1fr;
-            }
+        @media (max-width: 560px) {
+            .card { padding: 24px 20px; }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>📹 Subtitle Generator</h1>
-        <p class="subtitle">Upload your video and generate subtitles</p>
+    <div class="brand">Subtitle Generator</div>
+
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">Upload Video</div>
+            <div class="card-desc">Supports MP4, AVI, MOV, MKV — up to 5 GB</div>
+        </div>
 
         @if ($errors->any())
-            <div class="alert alert-error">
+            <div class="alert-error">
                 @foreach ($errors->all() as $error)
                     <div>{{ $error }}</div>
                 @endforeach
@@ -200,77 +183,59 @@
 
         <form action="{{ route('upload.store') }}" method="POST" enctype="multipart/form-data">
             @csrf
+            <input type="hidden" name="target_language" value="en">
 
-            <!-- Video File Upload -->
             <div class="form-group">
-                <label for="video">📤 Video File (MP4, AVI, MOV, MKV)</label>
-                <div class="file-input-wrapper">
-                    <input
-                        type="file"
-                        id="video"
-                        name="video"
-                        accept="video/mp4,video/avi,video/quicktime,video/x-matroska"
-                        required
-                        onchange="updateFileName(this)"
-                    >
-                </div>
-                <div class="file-info">Maximum file size: 5 GB</div>
+                <label class="form-label" for="video">Video File</label>
+                <input
+                    type="file"
+                    id="video"
+                    name="video"
+                    accept="video/mp4,video/avi,video/quicktime,video/x-matroska"
+                    required
+                    onchange="updateFileName(this)"
+                >
             </div>
 
-            <!-- Video Filename (Optional) -->
             <div class="form-group">
-                <label for="filename">📝 Video Name (Optional)</label>
+                <label class="form-label" for="filename">Video Name <span style="color:#4b5563;font-weight:400">(optional)</span></label>
                 <input
                     type="text"
                     id="filename"
                     name="filename"
-                    placeholder="My awesome video"
+                    placeholder="Enter a name for this video"
                 >
-                <div class="file-info">If not provided, original filename will be used</div>
+                <div class="form-hint">Leave blank to use the original filename</div>
             </div>
 
-            <!-- Target Language Selection -->
-            <div class="form-group">
-                <label>🌐 Target Subtitle Language</label>
-                <div class="language-options">
-                    <div class="radio-option">
-                        <input
-                            type="radio"
-                            id="lang_en"
-                            name="target_language"
-                            value="en"
-                            checked
-                        >
-                        <label for="lang_en" class="radio-label">🇬🇧 English</label>
-                    </div>
-                    <div class="radio-option">
-                        <input
-                            type="radio"
-                            id="lang_id"
-                            name="target_language"
-                            value="id"
-                        >
-                        <label for="lang_id" class="radio-label">🇮🇩 Indonesian</label>
-                    </div>
-                </div>
-            </div>
+            <div class="divider"></div>
 
-            <!-- Submit Button -->
-            <button type="submit">Upload & Process</button>
+            <button type="submit" id="submitBtn" class="btn-primary">
+                <span class="spinner" id="spinner"></span>
+                <span id="btnText">Upload &amp; Generate Subtitles</span>
+            </button>
         </form>
-
-        <div class="footer">
-            <p>Processing typically takes a few minutes depending on video length</p>
-        </div>
     </div>
+
+    <div class="footer-note">Subtitles are generated in English</div>
 
     <script>
         function updateFileName(input) {
-            if (!document.getElementById('filename').value && input.files && input.files[0]) {
-                const fileName = input.files[0].name;
-                document.getElementById('filename').value = fileName.replace(/\.[^.]+$/, '');
+            const nameField = document.getElementById('filename');
+            if (!nameField.value && input.files && input.files[0]) {
+                nameField.value = input.files[0].name.replace(/\.[^.]+$/, '');
             }
         }
+
+        document.querySelector('form').addEventListener('submit', function () {
+            const btn     = document.getElementById('submitBtn');
+            const spinner = document.getElementById('spinner');
+            const text    = document.getElementById('btnText');
+
+            btn.disabled       = true;
+            spinner.style.display = 'block';
+            text.textContent   = 'Uploading...';
+        });
     </script>
 </body>
 </html>
