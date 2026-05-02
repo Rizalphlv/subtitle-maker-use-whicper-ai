@@ -78,11 +78,14 @@ class WhisperService
             // 1. Download audio chunk to temp storage.
             $this->downloadAudioToTemp($audioMinioPath, $tempPath);
 
-            // 2. Call Groq Whisper translation API (auto-detect source, output English).
+            // 2. Call Groq Whisper transcription API.
             $response = $this->callWhisperApi($tempPath, $sourceLanguage);
 
             // 3. Extract and validate segments.
             $segments = $this->extractSegments($response);
+
+            // 4. Translate segments via Langbly API.
+            $segments = $this->translateSegments($segments);
 
             Log::info('WhisperService: transcription complete', [
                 'audio_path'   => $audioMinioPath,
@@ -148,23 +151,14 @@ class WhisperService
                 'model'    => $this->model,
             ]);
 
-            // Use /audio/translations so output is always English
-            // regardless of the source audio language.
-            
+            // Use /audio/transcriptions instead of translations
             $payload = [
                 'model'           => $this->model,
                 'response_format' => 'verbose_json', // Includes detailed timing info
             ];
 
             if ($sourceLanguage !== 'auto') {
-                $langNames = [
-                    'ko' => 'Korean',
-                    'ja' => 'Japanese',
-                    'th' => 'Thai',
-                    'zh' => 'Chinese'
-                ];
-                $langName = $langNames[$sourceLanguage] ?? $sourceLanguage;
-                $payload['prompt'] = "The audio is in {$langName}. Please translate it to English.";
+                $payload['language'] = $sourceLanguage;
             }
 
             $response = Http::withHeaders([
@@ -173,7 +167,7 @@ class WhisperService
             ->timeout(600) // 10 minute timeout for large files
             ->asMultipart()
             ->attach('file', fopen($absolutePath, 'rb'), 'audio.mp3')
-            ->post("{$this->apiEndpoint}/audio/translations", $payload);
+            ->post("{$this->apiEndpoint}/audio/transcriptions", $payload);
 
             if (!$response->successful()) {
                 $errorMsg = $response->json('error.message') ?? $response->body();
@@ -231,5 +225,85 @@ class WhisperService
         }
 
         return $segments;
+    }
+
+    /**
+     * Translate segments to English using Langbly API.
+     *
+     * @param array $segments Original segments
+     * @return array Translated segments
+     */
+    private function translateSegments(array $segments): array
+    {
+        Log::info('WhisperService: translating segments via Langbly');
+
+        foreach ($segments as &$segment) {
+            $text = trim((string) $segment['text']);
+            
+            if ($text === '') {
+                continue;
+            }
+
+            $segment['text'] = $this->langblyTranslate($text);
+        }
+
+        return $segments;
+    }
+
+    /**
+     * Call Langbly API to translate a single text.
+     *
+     * @param string $text Text to translate
+     * @return string Translated text or original if failed
+     */
+    private function langblyTranslate(string $text): string
+    {
+        $apiKey = env('LANGBLY_API_KEY', 'BEC2BgeYfHhMFyEovsbQr');
+        $url = 'https://api.langbly.com/translate';
+        
+        $attempts = 0;
+        $maxRetries = 2;
+
+        while ($attempts <= $maxRetries) {
+            try {
+                $response = Http::withHeaders([
+                    'Authorization' => "Bearer {$apiKey}",
+                    'Accept' => 'application/json',
+                ])->timeout(30)->post($url, [
+                    'text' => $text,
+                    'target_lang' => 'EN',
+                ]);
+
+                if ($response->successful()) {
+                    $json = $response->json();
+                    
+                    // Extract translation from common possible response structures
+                    $translated = $json['translation'] ?? $json['translated_text'] ?? $json['translatedText'] ?? $json['data']['translation'] ?? $json['result'] ?? $json['text'] ?? null;
+                    
+                    if (is_string($translated) && trim($translated) !== '') {
+                        $cleaned = trim($translated);
+                        // Strip non-english characters using regex
+                        $cleaned = preg_replace('/[^\x00-\x7F]+/', '', $cleaned);
+                        return trim($cleaned);
+                    }
+                    
+                    // If JSON was parsed but no known key was found, log and fallback
+                    Log::warning('Langbly API returned unknown JSON format: ' . $response->body());
+                } else {
+                    // Fallback if response is a plain string (not JSON)
+                    $body = trim($response->body());
+                    if ($body !== '' && !$response->json()) {
+                        return trim(preg_replace('/[^\x00-\x7F]+/', '', $body));
+                    }
+                }
+            } catch (Throwable $e) {
+                Log::warning("Langbly translation attempt {$attempts} failed: " . $e->getMessage());
+            }
+
+            $attempts++;
+        }
+
+        Log::error('Langbly translation permanently failed for text: ' . substr($text, 0, 50));
+        return $text; // Fallback to original text
     }
 }
