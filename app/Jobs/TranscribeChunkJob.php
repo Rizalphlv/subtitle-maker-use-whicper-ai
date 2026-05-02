@@ -90,8 +90,11 @@ class TranscribeChunkJob implements ShouldQueue
 
             // Call Groq Whisper translation API — auto-detects source language,
             // always outputs English text.
+            $video = $this->audioChunk->video;
+            $sourceLanguage = $video->source_language ?? 'auto';
+
             $whisperService = new WhisperService();
-            $segments = $whisperService->transcribe($this->audioChunk->path);
+            $segments = $whisperService->transcribe($this->audioChunk->path, $sourceLanguage);
 
             Log::info('TranscribeChunkJob: transcription received', [
                 'audio_chunk_id' => $this->audioChunk->id,

@@ -59,15 +59,17 @@ class WhisperService
      * Transcribe an audio chunk from MinIO using Whisper API.
      *
      * @param string $audioMinioPath  MinIO path to audio chunk
+     * @param string $sourceLanguage  Source language code (e.g., 'auto', 'ja', 'ko')
      *
      * @return array  Segments array: [["start" => 0.0, "end" => 2.5, "text" => "..."], ...]
      *
      * @throws RuntimeException  If API call fails or response is invalid.
      */
-    public function transcribe(string $audioMinioPath): array
+    public function transcribe(string $audioMinioPath, string $sourceLanguage = 'auto'): array
     {
         Log::info('WhisperService: starting transcription (translate to English)', [
             'audio_path' => $audioMinioPath,
+            'source_language' => $sourceLanguage,
         ]);
 
         $tempPath = "temp/whisper/chunk_" . uniqid() . ".mp3";
@@ -77,7 +79,7 @@ class WhisperService
             $this->downloadAudioToTemp($audioMinioPath, $tempPath);
 
             // 2. Call Groq Whisper translation API (auto-detect source, output English).
-            $response = $this->callWhisperApi($tempPath);
+            $response = $this->callWhisperApi($tempPath, $sourceLanguage);
 
             // 3. Extract and validate segments.
             $segments = $this->extractSegments($response);
@@ -136,7 +138,7 @@ class WhisperService
      *
      * @throws RuntimeException  If API call fails.
      */
-    private function callWhisperApi(string $tempPath): array
+    private function callWhisperApi(string $tempPath, string $sourceLanguage = 'auto'): array
     {
         try {
             $absolutePath = Storage::disk(self::TEMP_DISK)->path($tempPath);
@@ -148,16 +150,30 @@ class WhisperService
 
             // Use /audio/translations so output is always English
             // regardless of the source audio language.
+            
+            $payload = [
+                'model'           => $this->model,
+                'response_format' => 'verbose_json', // Includes detailed timing info
+            ];
+
+            if ($sourceLanguage !== 'auto') {
+                $langNames = [
+                    'ko' => 'Korean',
+                    'ja' => 'Japanese',
+                    'th' => 'Thai',
+                    'zh' => 'Chinese'
+                ];
+                $langName = $langNames[$sourceLanguage] ?? $sourceLanguage;
+                $payload['prompt'] = "The audio is in {$langName}. Please translate it to English.";
+            }
+
             $response = Http::withHeaders([
                 'Authorization' => "Bearer {$this->apiKey}",
             ])
             ->timeout(600) // 10 minute timeout for large files
             ->asMultipart()
             ->attach('file', fopen($absolutePath, 'rb'), 'audio.mp3')
-            ->post("{$this->apiEndpoint}/audio/translations", [
-                'model'           => $this->model,
-                'response_format' => 'verbose_json', // Includes detailed timing info
-            ]);
+            ->post("{$this->apiEndpoint}/audio/translations", $payload);
 
             if (!$response->successful()) {
                 $errorMsg = $response->json('error.message') ?? $response->body();

@@ -13,6 +13,7 @@ class Video extends Model
         'total_chunks',
         'status',
         'target_language',
+        'source_language',
         'minio_path',
     ];
 
