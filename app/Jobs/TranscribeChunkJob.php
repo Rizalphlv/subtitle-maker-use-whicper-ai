@@ -120,6 +120,10 @@ class TranscribeChunkJob implements ShouldQueue
             // Mark the audio chunk as transcribed.
             $this->audioChunk->markAsTranscribed();
 
+            // Track usage in cache (reset daily at midnight)
+            $cacheKey = 'whisper_daily_usage_' . date('Y-m-d');
+            \Illuminate\Support\Facades\Cache::increment($cacheKey, 120);
+            
             Log::info('TranscribeChunkJob: complete', [
                 'audio_chunk_id' => $this->audioChunk->id,
                 'chunk_index'    => $this->audioChunk->chunk_index,

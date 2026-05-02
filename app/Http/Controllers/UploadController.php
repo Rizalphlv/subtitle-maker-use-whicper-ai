@@ -16,7 +16,16 @@ class UploadController extends Controller
      */
     public function create()
     {
-        return view('upload.create');
+        $cacheKey = 'whisper_daily_usage_' . date('Y-m-d');
+        $usageSeconds = \Illuminate\Support\Facades\Cache::get($cacheKey, 0);
+        $dailyLimit = 28800;
+        $percentage = min(100, max(0, ($usageSeconds / $dailyLimit) * 100));
+
+        return view('upload.create', [
+            'usageSeconds' => $usageSeconds,
+            'dailyLimit' => $dailyLimit,
+            'percentage' => $percentage,
+        ]);
     }
 
     /**
@@ -78,6 +87,14 @@ class UploadController extends Controller
                 'video_id' => $video->id,
             ]);
 
+            if ($request->expectsJson()) {
+                $request->session()->flash('success', 'Video uploaded successfully! Processing has started.');
+                return response()->json([
+                    'success' => true,
+                    'redirect_url' => route('upload.status', ['uploadId' => $uploadId])
+                ]);
+            }
+
             // Redirect to status page
             return redirect()->route('upload.status', ['uploadId' => $uploadId])
                 ->with('success', 'Video uploaded successfully! Processing has started.');
@@ -87,6 +104,13 @@ class UploadController extends Controller
                 'error' => $exception->getMessage(),
                 'trace' => $exception->getTraceAsString(),
             ]);
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Upload failed: ' . $exception->getMessage()
+                ], 500);
+            }
 
             return back()->withError('Upload failed: ' . $exception->getMessage());
         }

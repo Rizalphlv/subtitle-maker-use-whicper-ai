@@ -159,6 +159,83 @@
             color: #374151;
         }
 
+        .progress-container {
+            display: none;
+            margin-top: 16px;
+        }
+
+        .progress-bar-bg {
+            width: 100%;
+            height: 8px;
+            background: #262626;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: #ffffff;
+            width: 0%;
+            transition: width 0.2s ease;
+        }
+
+        .progress-text {
+            font-size: 12px;
+            color: #d1d5db;
+            text-align: right;
+            font-weight: 500;
+        }
+
+        .usage-container {
+            margin-top: 24px;
+            padding: 16px;
+            background: #111111;
+            border: 1px solid #1f1f1f;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 520px;
+        }
+
+        .usage-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+
+        .usage-title {
+            color: #d1d5db;
+            font-weight: 500;
+        }
+
+        .usage-stats {
+            color: #9ca3af;
+        }
+
+        .usage-bar-bg {
+            width: 100%;
+            height: 6px;
+            background: #262626;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .usage-bar-fill {
+            height: 100%;
+            background: {{ $percentage >= 90 ? '#ef4444' : ($percentage >= 75 ? '#f59e0b' : '#3b82f6') }};
+            width: {{ $percentage }}%;
+            transition: width 0.3s ease;
+        }
+
+        .usage-desc {
+            font-size: 11px;
+            color: #6b7280;
+            margin-top: 8px;
+            text-align: center;
+        }
+
         @media (max-width: 560px) {
             .card { padding: 24px 20px; }
         }
@@ -214,7 +291,24 @@
                 <span class="spinner" id="spinner"></span>
                 <span id="btnText">Upload &amp; Generate Subtitles</span>
             </button>
+            <div class="progress-container" id="progressContainer">
+                <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" id="progressFill"></div>
+                </div>
+                <div class="progress-text" id="progressText">0%</div>
+            </div>
         </form>
+    </div>
+
+    <div class="usage-container">
+        <div class="usage-header">
+            <div class="usage-title">API Daily Usage</div>
+            <div class="usage-stats">{{ number_format($usageSeconds) }} / {{ number_format($dailyLimit) }} sec</div>
+        </div>
+        <div class="usage-bar-bg">
+            <div class="usage-bar-fill"></div>
+        </div>
+        <div class="usage-desc">Whisper API Limit: 7,200 sec/hour | 28,800 sec/day (Resets daily)</div>
     </div>
 
     <div class="footer-note">Subtitles are generated in English</div>
@@ -227,14 +321,82 @@
             }
         }
 
-        document.querySelector('form').addEventListener('submit', function () {
+        document.querySelector('form').addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const form    = this;
             const btn     = document.getElementById('submitBtn');
             const spinner = document.getElementById('spinner');
             const text    = document.getElementById('btnText');
+            const progContainer = document.getElementById('progressContainer');
+            const progFill = document.getElementById('progressFill');
+            const progText = document.getElementById('progressText');
+
+            // Reset errors
+            const errorAlert = document.querySelector('.alert-error');
+            if (errorAlert) {
+                errorAlert.remove();
+            }
 
             btn.disabled       = true;
             spinner.style.display = 'block';
             text.textContent   = 'Uploading...';
+            progContainer.style.display = 'block';
+            progFill.style.width = '0%';
+            progText.textContent = '0%';
+
+            const formData = new FormData(form);
+            const xhr = new XMLHttpRequest();
+
+            xhr.open(form.method, form.action, true);
+            xhr.setRequestHeader('Accept', 'application/json');
+
+            xhr.upload.onprogress = function(e) {
+                if (e.lengthComputable) {
+                    const percentComplete = Math.round((e.loaded / e.total) * 100);
+                    progFill.style.width = percentComplete + '%';
+                    progText.textContent = percentComplete + '%';
+                }
+            };
+
+            xhr.onload = function() {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    const response = JSON.parse(xhr.responseText);
+                    if (response.success && response.redirect_url) {
+                        window.location.href = response.redirect_url;
+                    }
+                } else {
+                    btn.disabled = false;
+                    spinner.style.display = 'none';
+                    text.textContent = 'Upload & Generate Subtitles';
+                    progContainer.style.display = 'none';
+                    
+                    let errorMsg = 'An error occurred during upload.';
+                    try {
+                        const response = JSON.parse(xhr.responseText);
+                        errorMsg = response.message || errorMsg;
+                    } catch (e) {}
+                    
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'alert-error';
+                    errorDiv.innerHTML = `<div>${errorMsg}</div>`;
+                    form.parentNode.insertBefore(errorDiv, form);
+                }
+            };
+
+            xhr.onerror = function() {
+                btn.disabled = false;
+                spinner.style.display = 'none';
+                text.textContent = 'Upload & Generate Subtitles';
+                progContainer.style.display = 'none';
+                
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'alert-error';
+                errorDiv.innerHTML = `<div>Network error occurred during upload.</div>`;
+                form.parentNode.insertBefore(errorDiv, form);
+            };
+
+            xhr.send(formData);
         });
     </script>
 </body>
