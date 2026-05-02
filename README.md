@@ -1,11 +1,11 @@
 # 🎬 Subtitle System - Video Transcription & Translation
 
-A Laravel-based system for automatically generating, translating, and downloading subtitles from video files. Built with OpenAI Whisper API for speech-to-text and GPT for translation.
+A Laravel-based system for automatically generating, translating, and downloading subtitles from video files. Built with Groq Whisper API for speech-to-text and OpenAI GPT for translation.
 
 ## ✨ Features
 
 - **Video Upload** - Support for MP4, AVI, MOV, MKV formats (up to 5GB)
-- **Automatic Transcription** - Convert speech to text using OpenAI Whisper API
+- **Automatic Transcription** - Convert speech to text using Groq Whisper API
 - **Multi-Language Support** - Translate subtitles between English (EN) and Indonesian (ID)
 - **Parallel Processing** - Process audio chunks concurrently for faster transcription
 - **SRT Download** - Generate and download subtitles in SRT format
@@ -46,7 +46,7 @@ CleanupVideoProcessingJob (verify → delete temps)
 - **Backend**: Laravel 12.0 with PHP 8.2
 - **Queue**: Redis-based (named queues: `default`, `transcribe`)
 - **APIs**: 
-  - OpenAI Whisper (whisper-1) for speech-to-text
+  - Groq Whisper API (whisper-large-v3) for speech-to-text
   - OpenAI GPT (gpt-4o-mini) for translation
 - **Storage**: MinIO (S3-compatible)
 - **Audio Processing**: FFmpeg
@@ -56,7 +56,7 @@ CleanupVideoProcessingJob (verify → delete temps)
 
 - PHP 8.2+
 - Docker & Docker Compose
-- OpenAI API key (Whisper + GPT access)
+- Groq API key (for Whisper) and OpenAI API key (for GPT)
 - MinIO S3-compatible storage
 - Redis
 
@@ -70,7 +70,8 @@ cp .env.example .env
 
 Configure `.env`:
 ```env
-OPENAI_API_KEY=sk_your_key_here
+GROQ_API_KEY=gsk_your_groq_key_here
+OPENAI_API_KEY=sk_your_openai_key_here
 OPENAI_ENDPOINT=https://api.openai.com/v1
 
 MINIO_KEY=minioadmin
@@ -214,7 +215,7 @@ docker compose exec app php artisan test tests/Unit/TranslationServiceTest.php -
 |------|------|--------|
 | 1 | 04:54:02 | Upload & create Video (status=queued) |
 | 2 | 04:54:15-21 | Extract audio (FFmpeg) |
-| 3 | 04:54:21-22 | Split into 3 chunks (60s each) |
+| 3 | 04:54:21-22 | Split into chunks (600s / 10m each) |
 | 4 | 04:54:22-39 | Parallel transcription (Whisper 3×) |
 | 5 | 04:54:46 | Merge 25 segments, verify all chunks done |
 | 6 | 04:54:46 | Generate en.srt |
@@ -226,11 +227,11 @@ docker compose exec app php artisan test tests/Unit/TranslationServiceTest.php -
 
 ### Audio Settings
 - Format: MP3, Bitrate: 64kbps
-- Chunk Duration: 60 seconds
+- Chunk Duration: 600 seconds (10 minutes)
 
-### OpenAI Models
-- Transcription: `whisper-1`
-- Translation: `gpt-4o-mini` (temperature: 0.3)
+### AI Models
+- Transcription: `whisper-large-v3` (via Groq)
+- Translation: `gpt-4o-mini` (via OpenAI, temperature: 0.3)
 
 ### Language Codes
 - `en` = English
@@ -278,7 +279,7 @@ docker compose restart queue
 
 3. **Skip API calls for empty segments**
    - Detects silent audio and placeholder text (...)
-   - Saves OpenAI API costs
+   - Saves Groq/OpenAI API costs
    - Graceful handling of imperfect audio
 
 4. **Parallel chunk processing**
