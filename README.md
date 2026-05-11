@@ -215,7 +215,7 @@ docker compose exec app php artisan test tests/Unit/TranslationServiceTest.php -
 |------|------|--------|
 | 1 | 04:54:02 | Upload & create Video (status=queued) |
 | 2 | 04:54:15-21 | Extract audio (FFmpeg) |
-| 3 | 04:54:21-22 | Split into chunks (600s / 10m each) |
+| 3 | 04:54:21-22 | Split into chunks (120s / 2m each) |
 | 4 | 04:54:22-39 | Parallel transcription (Whisper 3×) |
 | 5 | 04:54:46 | Merge 25 segments, verify all chunks done |
 | 6 | 04:54:46 | Generate en.srt |
@@ -227,7 +227,7 @@ docker compose exec app php artisan test tests/Unit/TranslationServiceTest.php -
 
 ### Audio Settings
 - Format: MP3, Bitrate: 64kbps
-- Chunk Duration: 600 seconds (10 minutes)
+- Chunk Duration: 120 seconds (2 minutes)
 
 ### AI Models
 - Transcription: `whisper-large-v3` (via Groq)

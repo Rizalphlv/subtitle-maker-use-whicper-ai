@@ -35,8 +35,8 @@ class AudioChunkService
     private const ASSET_DISK = 'minio';
     private const TEMP_DISK = 'local';
 
-    /** Segment duration in seconds (10 minutes). */
-    private const SEGMENT_DURATION = 600;
+    /** Segment duration in seconds (2 minutes). */
+    private const SEGMENT_DURATION = 120;
 
     /**
      * Split audio into chunks and create database records.

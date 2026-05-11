@@ -93,8 +93,28 @@ class TranscribeChunkJob implements ShouldQueue
             $video = $this->audioChunk->video;
             $sourceLanguage = $video->source_language ?? 'auto';
 
+            // Try to get context from previous chunk for smoother transitions
+            $initialPrompt = null;
+            if ($this->audioChunk->chunk_index > 0) {
+                $prevSubtitle = Subtitle::where('video_id', $this->audioChunk->video_id)
+                    ->where('chunk_index', $this->audioChunk->chunk_index - 1)
+                    ->where('status', 'transcribed')
+                    ->first();
+                
+                if ($prevSubtitle && !empty($prevSubtitle->raw_transcript)) {
+                    // Extract text from the last 3 segments as context
+                    $lastSegments = array_slice($prevSubtitle->raw_transcript, -3);
+                    $initialPrompt = trim(implode(' ', array_column($lastSegments, 'text')));
+                    
+                    Log::debug('TranscribeChunkJob: found previous context', [
+                        'audio_chunk_id' => $this->audioChunk->id,
+                        'prompt_preview' => mb_substr($initialPrompt, 0, 50) . '...'
+                    ]);
+                }
+            }
+
             $whisperService = new WhisperService();
-            $segments = $whisperService->transcribe($this->audioChunk->path, $sourceLanguage);
+            $segments = $whisperService->transcribe($this->audioChunk->path, $sourceLanguage, $initialPrompt);
 
             Log::info('TranscribeChunkJob: transcription received', [
                 'audio_chunk_id' => $this->audioChunk->id,

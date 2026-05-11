@@ -44,10 +44,13 @@ class CleanupVideoProcessingJob implements ShouldQueue
             $deletedCount = $this->deleteTemporaryChunks($videoId);
             Log::info("CleanupVideoProcessingJob: Deleted {$deletedCount} audio chunks for video_id={$videoId}");
 
-            // ── Step 3: Delete Original Video File (Optional) ────────────────────────
-            // Uncomment if you want to delete the original video after processing
-            // Log::info("CleanupVideoProcessingJob: Deleting original video for video_id={$videoId}");
-            // $this->deleteOriginalVideo($videoId);
+            // ── Step 3: Delete Original Audio File ────────────────────────────────────
+            Log::info("CleanupVideoProcessingJob: Deleting original audio for video_id={$videoId}");
+            $this->deleteOriginalAudio($videoId);
+
+            // ── Step 4: Delete Original Video File ────────────────────────────────────
+            Log::info("CleanupVideoProcessingJob: Deleting original video for video_id={$videoId}");
+            $this->deleteOriginalVideo($videoId);
 
             Log::info("CleanupVideoProcessingJob: Cleanup completed successfully for video_id={$videoId}");
 

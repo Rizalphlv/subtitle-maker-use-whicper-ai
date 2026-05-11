@@ -250,7 +250,7 @@
     <div class="card">
         <div class="card-header">
             <div class="card-title">Upload Video</div>
-            <div class="card-desc">Supports MP4, AVI, MOV, MKV — up to 5 GB</div>
+            <div class="card-desc">Supports MP4, AVI, MOV, MKV — up to 4 GB</div>
         </div>
 
         @if ($errors->any())
@@ -370,7 +370,12 @@
                 if (e.lengthComputable) {
                     const percentComplete = Math.round((e.loaded / e.total) * 100);
                     progFill.style.width = percentComplete + '%';
-                    progText.textContent = percentComplete + '%';
+                    if (percentComplete === 100) {
+                        progText.textContent = 'Finalizing on server... (Please wait)';
+                        text.textContent = 'Processing...';
+                    } else {
+                        progText.textContent = percentComplete + '%';
+                    }
                 }
             };
 
@@ -389,8 +394,17 @@
                     let errorMsg = 'An error occurred during upload.';
                     try {
                         const response = JSON.parse(xhr.responseText);
-                        errorMsg = response.message || errorMsg;
-                    } catch (e) {}
+                        errorMsg = response.message || (response.errors ? Object.values(response.errors).flat().join('<br>') : errorMsg);
+                    } catch (e) {
+                        // If not JSON, check status code
+                        if (xhr.status === 413) {
+                            errorMsg = 'File is too large for the server (Max 4GB).';
+                        } else if (xhr.status === 504) {
+                            errorMsg = 'Gateway Timeout: The server took too long to respond.';
+                        } else {
+                            errorMsg = `Server error: ${xhr.status} ${xhr.statusText}`;
+                        }
+                    }
                     
                     const errorDiv = document.createElement('div');
                     errorDiv.className = 'alert-error';

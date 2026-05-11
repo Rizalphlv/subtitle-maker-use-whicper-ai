@@ -33,8 +33,14 @@ class UploadController extends Controller
      */
     public function store(Request $request)
     {
+        Log::debug('UploadController: Request received', [
+            'has_file' => $request->hasFile('video'),
+            'content_length' => $request->header('Content-Length'),
+            'all_data' => $request->except('video'),
+        ]);
+
         $validated = $request->validate([
-            'video' => 'required|file|mimes:mp4,avi,mov,mkv|max:5242880',  // 5GB max
+            'video' => 'required|file|mimes:mp4,avi,mov,mkv|max:4194304',  // Sync with 4GB limits
             'target_language' => 'required|in:en,id',
             'source_language' => 'nullable|string|in:auto,ko,ja,th,zh',
             'filename' => 'nullable|string|max:255',

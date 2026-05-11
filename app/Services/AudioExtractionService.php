@@ -132,8 +132,10 @@ class AudioExtractionService
             'ffmpeg',
             '-i', $inputAbsPath,
             '-vn',
-            '-acodec', 'mp3',
-            '-ab', '64k',
+            '-acodec', 'libmp3lame',
+            '-ab', '128k',
+            '-ar', '16000',
+            '-ac', '1',
             '-y', // Overwrite output file without asking
             $outputAbsPath,
         ];
